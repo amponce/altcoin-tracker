@@ -45,6 +45,20 @@ This project is an automated tool that monitors CoinMarketCap for potential buyi
    REDDIT_USER_AGENT=your_reddit_user_agent
    ```
 
+## Getting Reddit API Credentials
+
+1. Go to [Reddit's App Preferences](https://www.reddit.com/prefs/apps).
+2. Click on "Create App" or "Create Another App" at the bottom of the page.
+3. Fill in the required fields:
+   - **name**: Choose a name for your application.
+   - **App type**: Select "script".
+   - **description**: (optional) Provide a description for your app.
+   - **about url**: (optional) Add a URL for more information about your app.
+   - **redirect uri**: Set this to `http://localhost:8000` or any URL you prefer (this won't be used in this script).
+   - **permissions**: (optional) Set the required permissions.
+4. Click "Create app".
+5. Your app will be created, and you will see `client_id` and `client_secret`. Copy these values and add them to your `.env` file along with a user agent.
+
 ## Configuration
 
 You can adjust the tracker's settings in the `config.py` file. This includes:
