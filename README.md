@@ -120,5 +120,3 @@ Contributions, issues, and feature requests are welcome. Feel free to check [iss
 - Reddit for providing the discussion platform and API access
 
 ---
-
-This updated README includes instructions for the new commands and features you've implemented, providing a comprehensive guide for users to understand and utilize the CoinMarketCap Altcoin Tracker effectively.
