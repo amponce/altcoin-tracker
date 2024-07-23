@@ -1,5 +1,3 @@
-Here’s the updated README for your CoinMarketCap Altcoin Tracker project:
-
 # CoinMarketCap Altcoin Tracker
 
 This project is an automated tool that monitors CoinMarketCap for potential buying opportunities in the altcoin market. It analyzes price changes, volume changes, and uses AI-powered sentiment analysis to identify promising altcoins.
