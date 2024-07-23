@@ -1,0 +1,7 @@
+requests
+tabulate
+openai
+python-dotenv
+ratelimit
+praw
+textblob
