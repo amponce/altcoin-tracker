@@ -7,3 +7,4 @@ praw
 textblob
 colorama
 ascii_art
+emoji

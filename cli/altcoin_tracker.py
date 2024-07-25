@@ -3,6 +3,9 @@ import logging
 import re
 import random
 import json
+from tabulate import tabulate
+import emoji
+
 from ai.openai_client import OpenAIClient
 from clients.reddit_client import RedditClient
 from clients.coinmarketcap_client import get_latest_listings
@@ -76,7 +79,7 @@ class AltcoinTracker(cmd.Cmd):
             ("u", "Update CMC Data"),
             ("a", "Analyze Reddit"),
             ("d <symbol>", "Detailed Analysis"),
-            ("l", "List Tokens"),
+            ("l", "List Tokens <20>"),
             ("s", "Status"),
             ("p", "Profit Potential"),
             ("t", "Trends"),
@@ -256,11 +259,13 @@ class AltcoinTracker(cmd.Cmd):
         token = self.cmc_data.get(symbol)
         
         if not token:
-            print(f"Token symbol '{symbol}' not found. Use 'l' to see available tokens.")
+            print(f"{Fore.RED}Token symbol '{symbol}' not found. Use 'l' to see available tokens.{Fore.RESET}")
             return None, None
 
         try:
-            print(f"Detailed analysis for {token['symbol']}:")
+            print(f"{Fore.CYAN}{'='*50}{Fore.RESET}")
+            print(f"{Fore.YELLOW}Detailed analysis for {token['symbol']}{Fore.RESET}")
+            print(f"{Fore.CYAN}{'='*50}{Fore.RESET}")
             
             # Price information
             price = token['quote']['USD']['price']
@@ -269,33 +274,37 @@ class AltcoinTracker(cmd.Cmd):
             percent_change_24h = token['quote']['USD']['percent_change_24h']
             percent_change_7d = token['quote']['USD']['percent_change_7d']
             
-            print(f"Price: ${price:.4f}")
-            print(f"Market Cap: ${market_cap:,.0f}")
-            print(f"24h Volume: ${volume_24h:,.0f}")
-            print(f"24h Change: {percent_change_24h:.2f}%")
-            print(f"7d Change: {percent_change_7d:.2f}%")
+            price_data = [
+                ["Price", f"${price:.4f}"],
+                ["Market Cap", f"${market_cap:,.0f}"],
+                ["24h Volume", f"${volume_24h:,.0f}"],
+                ["24h Change", f"{percent_change_24h:.2f}% {emoji.emojize(':chart_increasing:') if percent_change_24h > 0 else emoji.emojize(':chart_decreasing:')}"],
+                ["7d Change", f"{percent_change_7d:.2f}% {emoji.emojize(':chart_increasing:') if percent_change_7d > 0 else emoji.emojize(':chart_decreasing:')}"]
+            ]
+            print(tabulate(price_data, headers=["Metric", "Value"], tablefmt="fancy_grid"))
             
             # Technical Analysis
-            print("\nTechnical Analysis:")
+            print(f"\n{Fore.YELLOW}Technical Analysis:{Fore.RESET}")
             rsi = self.calculate_rsi(symbol)
             macd = self.calculate_macd(symbol)
             bollinger_bands = self.calculate_bollinger_bands(symbol)
-            print(f"RSI (14): {rsi:.2f}")
-            print(f"MACD: {macd}")
-            print(f"Bollinger Bands: {bollinger_bands}")
+            
+            tech_data = [
+                ["RSI (14)", f"{rsi:.2f}"],
+                ["MACD", macd],
+                ["Bollinger Bands", bollinger_bands]
+            ]
+            print(tabulate(tech_data, headers=["Indicator", "Value"], tablefmt="fancy_grid"))
             
             # Sentiment Analysis
             openai_client = OpenAIClient()
             sentiment_score = openai_client.analyze_sentiment_openai(token['symbol'], token.get('description', ''))
-            print(f"\nSentiment Score: {sentiment_score:.2f}")
+            print(f"\n{Fore.YELLOW}Sentiment Score:{Fore.RESET} {sentiment_score:.2f}")
             
             # Reddit Analysis
-            reddit_mentions = 0
-            reddit_sentiment = None
-            reddit_summaries = []
             if self.reddit_analysis_results:
                 reddit_mentions = self.reddit_analysis_results['currency_mentions'].get(symbol, 0)
-                print(f"\nReddit Analysis:")
+                print(f"\n{Fore.YELLOW}Reddit Analysis:{Fore.RESET}")
                 print(f"Mentions: {reddit_mentions}")
                 
                 if reddit_mentions > 0:
@@ -304,15 +313,15 @@ class AltcoinTracker(cmd.Cmd):
                     print(f"Reddit Sentiment: {reddit_sentiment:.4f}")
                     reddit_summaries = self.reddit_analysis_results.get('summaries', [])
                     if reddit_summaries:
-                        print("\nReddit Discussion Summaries:")
+                        print(f"\n{Fore.YELLOW}Reddit Discussion Summaries:{Fore.RESET}")
                         for i, summary in enumerate(reddit_summaries, 1):
-                            print(f"Summary {i}: {summary}")
+                            print(f"{Fore.GREEN}Summary {i}:{Fore.RESET} {summary}")
                     else:
                         print("No relevant Reddit discussions found for this token.")
                 else:
                     print("Not enough mentions for sentiment analysis")
             else:
-                print("\nNo Reddit analysis available. Use the 'a' command to run Reddit analysis first.")
+                print(f"\n{Fore.YELLOW}No Reddit analysis available. Use the 'a' command to run Reddit analysis first.{Fore.RESET}")
             
             # Prepare analysis dictionary for comprehensive analysis
             analysis = {
