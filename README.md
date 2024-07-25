@@ -29,8 +29,8 @@ This project is an automated tool that monitors CoinMarketCap for potential buyi
 1. Clone this repository:
 
    ```
-   git clone https://github.com/yourusername/cmc-altcoin-tracker.git
-   cd cmc-altcoin-tracker
+   git clone https://github.com/amponce/altcoin-tracker.git
+   cd altcoin-tracker
    ```
 
 2. Install the required packages:
@@ -45,7 +45,7 @@ This project is an automated tool that monitors CoinMarketCap for potential buyi
    OPENAI_API_KEY=your_openai_api_key
    REDDIT_CLIENT_ID=your_reddit_client_id
    REDDIT_CLIENT_SECRET=your_reddit_client_secret
-   REDDIT_USER_AGENT=your_reddit_user_agent
+   REDDIT_USER_AGENT=python:com.App-12354.appname:v1.0 (by /u/username)
    ```
 
 ## Getting Reddit API Credentials
