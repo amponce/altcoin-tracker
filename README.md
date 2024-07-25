@@ -121,7 +121,7 @@ This tool is for informational purposes only. It does not constitute financial a
 
 ## Contributing
 
-Contributions, issues, and feature requests are welcome. Feel free to check [issues page](https://github.com/yourusername/cmc-altcoin-tracker/issues) if you want to contribute.
+Contributions, issues, and feature requests are welcome. Feel free to check [issues page](https://github.com/amponce/altcoin-tracker/issues) if you want to contribute.
 
 ## Acknowledgments
 
