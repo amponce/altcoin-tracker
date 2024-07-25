@@ -3,7 +3,6 @@ import requests
 from requests.exceptions import RequestException
 from config import CMC_BASE_URL, HEADERS, MAX_REQUESTS_PER_MINUTE
 from utils.rate_limiter import RateLimiter
-
 rate_limiter = RateLimiter()
 
 def get_latest_listings(limit: int = 500):

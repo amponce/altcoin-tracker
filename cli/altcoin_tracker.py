@@ -1,18 +1,27 @@
 import cmd
 import logging
 import re
+import random
+import json
+from ai.openai_client import OpenAIClient
 from clients.reddit_client import RedditClient
 from clients.coinmarketcap_client import get_latest_listings
 from services.trend_analysis import analyze_trends
 from services.reddit_analysis import analyze_reddit
-from services.sentiment_analysis import analyze_reddit_sentiment
+
+from services.sentiment_analysis import get_openai_sentiment, analyze_reddit_sentiment
 from config import HEADERS
 from models import Post
 from textblob import TextBlob
 from tabulate import tabulate
 from colorama import init, Fore, Back, Style
 from ascii_art import WELCOME_ART
-from utils.utils import progress_bar
+from utils.progress import progress_bar
+from utils.rate_limiter import RateLimiter
+from config import CMC_BASE_URL
+
+rate_limiter = RateLimiter()
+
 
 class AltcoinTracker(cmd.Cmd):
     prompt = Fore.GREEN + 'altcoin-tracker> ' + Style.RESET_ALL
@@ -30,6 +39,12 @@ class AltcoinTracker(cmd.Cmd):
         self.network = "all"
         self.chat_history = []
         self.show_welcome_menu()
+        self.openai_client = OpenAIClient()
+        self.prompt = f"{Fore.GREEN}altcoin-tracker>{Fore.RESET} "
+
+    def do_q(self, arg):
+        """Alias for exit"""
+        return self.do_exit(arg)
 
     def do_tour(self, arg):
         """Take an interactive tour of the application"""
@@ -54,6 +69,53 @@ class AltcoinTracker(cmd.Cmd):
         print(WELCOME_ART)
         print(f"{Fore.CYAN + Style.BRIGHT}Welcome to the Enhanced CoinMarketCap Altcoin Tracker!{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Type 'help' to see available commands.{Style.RESET_ALL}")
+
+
+    def display_help_menu(self):
+        help_items = [
+            ("u", "Update CMC Data"),
+            ("a", "Analyze Reddit"),
+            ("d <symbol>", "Detailed Analysis"),
+            ("l", "List Tokens"),
+            ("s", "Status"),
+            ("p", "Profit Potential"),
+            ("t", "Trends"),
+            ("h", "Full Help"),
+            ("q", "Quit")
+        ]
+        help_text = " | ".join([f"{Fore.GREEN}{cmd}{Fore.RESET}:{desc}" for cmd, desc in help_items])
+        print(f"\n{help_text}\n")
+
+
+
+    def cmdloop(self, intro=None):
+        print(self.intro)
+        while True:
+            try:
+                self.display_help_menu()
+                if self.cmdqueue:
+                    line = self.cmdqueue.pop(0)
+                else:
+                    if self.use_rawinput:
+                        try:
+                            line = input(self.prompt)
+                        except EOFError:
+                            line = 'EOF'
+                    else:
+                        self.stdout.write(self.prompt)
+                        self.stdout.flush()
+                        line = self.stdin.readline()
+                        if not len(line):
+                            line = 'EOF'
+                        else:
+                            line = line.rstrip('\r\n')
+                line = self.precmd(line)
+                stop = self.onecmd(line)
+                stop = self.postcmd(stop, line)
+                if stop:
+                    break
+            except KeyboardInterrupt:
+                print("^C")
 
     def do_u(self, arg):
         """Update the current listings and process CoinMarketCap data"""
@@ -162,6 +224,7 @@ class AltcoinTracker(cmd.Cmd):
                 'momentum': price_change_24h * volume_change_24h / 100  # Simple momentum calculation
             }
             self.trends.append(trend)
+
     def calculate_potential_score(self, token):
         price_change_24h = token['quote']['USD']['percent_change_24h']
         price_change_7d = token['quote']['USD']['percent_change_7d']
@@ -187,50 +250,94 @@ class AltcoinTracker(cmd.Cmd):
         
         return max(score, 0)  # Ensure non-negative score
 
-    def detailed_analysis(self, symbol, data):
-        """Perform detailed analysis for a specific token"""
-        logging.info(f"Performing detailed analysis for {symbol}")
+    def detailed_analysis(self, symbol):
+        """Perform detailed analysis on a specific token"""
+        symbol = symbol.upper()
+        token = self.cmc_data.get(symbol)
         
-        # Fetch Reddit comments for the symbol
-        posts = self.reddit_client.search_posts(query=symbol, subreddit_name="CryptoCurrency", limit=5)
-        comments = []
-        for post in posts:
-            comments.extend(self.reddit_client.get_comments(post, max_comments=20))
-        
-        reddit_sentiment = analyze_reddit_sentiment(symbol, comments)
-        
-        # Fetch token info from CoinMarketCap
-        endpoint = f"{CMC_BASE_URL}cryptocurrency/info"
-        parameters = {"symbol": symbol}
+        if not token:
+            print(f"Token symbol '{symbol}' not found. Use 'l' to see available tokens.")
+            return None, None
+
         try:
-            response = rate_limiter.limited_request("GET", endpoint, headers=HEADERS, params=parameters)
-            response.raise_for_status()
-            response_data = response.json()
-            token_info = response_data.get("data", {}).get(symbol, {})
+            print(f"Detailed analysis for {token['symbol']}:")
+            
+            # Price information
+            price = token['quote']['USD']['price']
+            market_cap = token['quote']['USD']['market_cap']
+            volume_24h = token['quote']['USD']['volume_24h']
+            percent_change_24h = token['quote']['USD']['percent_change_24h']
+            percent_change_7d = token['quote']['USD']['percent_change_7d']
+            
+            print(f"Price: ${price:.4f}")
+            print(f"Market Cap: ${market_cap:,.0f}")
+            print(f"24h Volume: ${volume_24h:,.0f}")
+            print(f"24h Change: {percent_change_24h:.2f}%")
+            print(f"7d Change: {percent_change_7d:.2f}%")
+            
+            # Technical Analysis
+            print("\nTechnical Analysis:")
+            rsi = self.calculate_rsi(symbol)
+            macd = self.calculate_macd(symbol)
+            bollinger_bands = self.calculate_bollinger_bands(symbol)
+            print(f"RSI (14): {rsi:.2f}")
+            print(f"MACD: {macd}")
+            print(f"Bollinger Bands: {bollinger_bands}")
+            
+            # Sentiment Analysis
+            openai_client = OpenAIClient()
+            sentiment_score = openai_client.analyze_sentiment_openai(token['symbol'], token.get('description', ''))
+            print(f"\nSentiment Score: {sentiment_score:.2f}")
+            
+            # Reddit Analysis
+            reddit_mentions = 0
+            reddit_sentiment = None
+            reddit_summaries = []
+            if self.reddit_analysis_results:
+                reddit_mentions = self.reddit_analysis_results['currency_mentions'].get(symbol, 0)
+                print(f"\nReddit Analysis:")
+                print(f"Mentions: {reddit_mentions}")
+                
+                if reddit_mentions > 0:
+                    relevant_text = ' '.join(re.findall(r'[^.!?]*{}[^.!?]*[.!?]'.format(symbol), self.reddit_analysis_results['analyzed_text'], re.IGNORECASE))
+                    reddit_sentiment = TextBlob(relevant_text).sentiment.polarity
+                    print(f"Reddit Sentiment: {reddit_sentiment:.4f}")
+                    reddit_summaries = self.reddit_analysis_results.get('summaries', [])
+                    if reddit_summaries:
+                        print("\nReddit Discussion Summaries:")
+                        for i, summary in enumerate(reddit_summaries, 1):
+                            print(f"Summary {i}: {summary}")
+                    else:
+                        print("No relevant Reddit discussions found for this token.")
+                else:
+                    print("Not enough mentions for sentiment analysis")
+            else:
+                print("\nNo Reddit analysis available. Use the 'a' command to run Reddit analysis first.")
+            
+            # Prepare analysis dictionary for comprehensive analysis
+            analysis = {
+                'symbol': token['symbol'],
+                'name': token['name'],
+                'price': price,
+                'market_cap': market_cap,
+                'volume_24h': volume_24h,
+                'percent_change_24h': percent_change_24h,
+                'percent_change_7d': percent_change_7d,
+                'description': token.get('description', 'N/A'),
+                'rsi': rsi,
+                'macd': macd,
+                'bollinger_bands': bollinger_bands,
+                'sentiment_score': sentiment_score,
+                'reddit_mentions': reddit_mentions,
+                'reddit_sentiment': reddit_sentiment if reddit_sentiment is not None else 'N/A',
+                'reddit_summaries': reddit_summaries
+            }
+            
+            return analysis, token
+            
         except Exception as e:
-            logging.error(f"Error fetching detailed information for {symbol}: {e}")
-            token_info = {}
-        
-        # Analyze sentiment using OpenAI (if you want to use this as well)
-        description = token_info.get("description", "")
-        openai_sentiment = analyze_sentiment_openai(symbol, description)
-        
-        return {
-            "symbol": symbol,
-            "price_change": data.get("percent_change_24h", "N/A"),
-            "volume_change": data.get("volume_change_24h", "N/A"),
-            "sentiment_score": openai_sentiment,
-            "reddit_sentiment": reddit_sentiment,
-            "market_cap": data.get("market_cap", "N/A"),
-            "circulating_supply": data.get("circulating_supply", "N/A"),
-            "max_supply": token_info.get("max_supply", "N/A"),
-            "total_supply": token_info.get("total_supply", "N/A"),
-            "platform": token_info.get("platform", "N/A"),
-            "category": token_info.get("category", "N/A"),
-            "description": description,
-            "date_added": token_info.get("date_added", "N/A"),
-            "urls": token_info.get("urls", "N/A")
-        }
+            print(f"An error occurred while analyzing the token: {str(e)}")
+            return None, None
 
     def do_l(self, arg):
         """List all current Ethereum-based tokens"""
@@ -255,6 +362,27 @@ class AltcoinTracker(cmd.Cmd):
         
         headers = ["Symbol", "Price", "Market Cap", "24h Volume", "24h Change"]
         print(tabulate(table_data, headers=headers, tablefmt="grid"))
+        
+    def do_s(self, arg):
+        """Show the current status of the tool"""
+        print(f"{Fore.CYAN}Current Status:{Fore.RESET}")
+        print(f"CoinMarketCap data: {'Loaded' if self.cmc_data else 'Not loaded'}")
+        print(f"Number of tracked tokens: {len(self.cmc_data)}")
+        print(f"Number of Ethereum tokens: {len(self.ethereum_tokens)}")
+        print(f"Reddit analysis: {'Available' if self.reddit_analysis_results else 'Not available'}")
+        print(f"Price alerts set: {len(self.price_alerts)}")
+        print(f"Trend analysis: {'Available' if self.trends else 'Not available'}")
+        
+        print(f"\n{Fore.YELLOW}Next steps:{Fore.RESET}")
+        if not self.cmc_data:
+            print("- Use 'u' to update CoinMarketCap data")
+        elif not self.reddit_analysis_results:
+            print("- Use 'a' to run Reddit analysis (recommended)")
+        else:
+            print("- Use 'd <symbol>' to get detailed analysis of a specific token")
+            print("- Use 'p' to see tokens with high profit potential")
+            print("- Use 't' to view current market trends")
+        print("- Use 'h' to see all available commands")
   
     def do_p(self, arg):
         """Identify and display tokens with the highest profit potential"""
@@ -281,48 +409,22 @@ class AltcoinTracker(cmd.Cmd):
 
     def do_d(self, arg):
         """Perform detailed analysis on a specific token"""
-        symbol = arg.strip().upper()
-        token = self.cmc_data.get(symbol)
+        if not self.cmc_data:
+            print("Please run 'u' to update CoinMarketCap data first.")
+            return
+        if not self.reddit_analysis_results:
+            print("Note: Reddit analysis hasn't been run. Use 'a' to analyze Reddit data.")
         
-        if token:
-            try:
-                analysis = self.detailed_analysis(token['symbol'], token['quote']['USD'])
-                print(f"Detailed analysis for {token['symbol']}:")
-                for key, value in analysis.items():
-                    if isinstance(value, float):
-                        print(f"{key}: {value:.4f}")
-                    elif isinstance(value, dict):
-                        print(f"{key}:")
-                        for subkey, subvalue in value.items():
-                            print(f"  {subkey}: {subvalue}")
-                    else:
-                        print(f"{key}: {value}")
-                
-                if self.reddit_analysis_results:
-                    mentions = self.reddit_analysis_results['currency_mentions'].get(symbol, 0)
-                    print(f"\nReddit Analysis:")
-                    print(f"Mentions: {mentions}")
-                    
-                    if mentions > 0:
-                        relevant_text = ' '.join(re.findall(r'[^.!?]*{}[^.!?]*[.!?]'.format(symbol), self.reddit_analysis_results['analyzed_text'], re.IGNORECASE))
-                        sentiment = TextBlob(relevant_text).sentiment.polarity
-                        print(f"Reddit Sentiment: {sentiment:.4f}")
-                    else:
-                        print("Not enough mentions for sentiment analysis")
-                else:
-                    print("\nNo Reddit analysis available. Run 'a' first.")
-                
-                self.perform_technical_analysis(symbol)
-                
-                # New AI-powered comprehensive analysis
-                comprehensive_analysis = self.generate_comprehensive_analysis(token, analysis, self.reddit_analysis_results)
-                print("\nComprehensive AI Analysis:")
-                print(comprehensive_analysis)
-                    
-            except Exception as e:
-                print(f"An error occurred while analyzing the token: {e}")
+        symbol = arg.strip().upper()
+        analysis, token = self.detailed_analysis(symbol)
+        
+        if analysis and token:
+            # Generate comprehensive analysis
+            comprehensive_analysis = self.generate_comprehensive_analysis(token, analysis, self.reddit_analysis_results)
+            print("\nComprehensive AI Analysis:")
+            print(comprehensive_analysis)
         else:
-            print(f"Token symbol '{symbol}' not found. Use 'l' to see available tokens.")
+            print(f"Could not perform analysis on token '{symbol}'.")
 
     def generate_comprehensive_analysis(self, token, analysis, reddit_analysis):
         """Generate a comprehensive analysis using AI"""
@@ -338,15 +440,15 @@ class AltcoinTracker(cmd.Cmd):
         Description: {token.get('description', 'N/A')}
         
         Technical Analysis:
-        RSI (14): {self.calculate_rsi(token['symbol'])}
-        MACD: {self.calculate_macd(token['symbol'])}
-        Bollinger Bands: {self.calculate_bollinger_bands(token['symbol'])}
+        RSI (14): {analysis.get('rsi', 'N/A')}
+        MACD: {analysis.get('macd', 'N/A')}
+        Bollinger Bands: {analysis.get('bollinger_bands', 'N/A')}
         
         Reddit Mentions: {reddit_analysis['currency_mentions'].get(token['symbol'], 0) if reddit_analysis else 'N/A'}
         Reddit Sentiment: {analysis.get('reddit_sentiment', 'N/A')}
         
         Additional Info:
-        {json.dumps(analysis, indent=2)}
+        {json.dumps(analysis, indent=2, default=str)}
         """
         
         prompt = f"""
@@ -385,7 +487,7 @@ class AltcoinTracker(cmd.Cmd):
         """
 
         try:
-            response = client.chat.completions.create(
+            response = self.openai_client.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are a cryptocurrency analyst providing comprehensive insights."},
@@ -604,30 +706,48 @@ class AltcoinTracker(cmd.Cmd):
         ]
 
     def do_c(self, arg):
-        """Start a chat session with the AI about scanned coins"""
+        """Start a chat session with the AI about scanned coins or just for casual conversation"""
         print("Starting chat session. Type 'exit' to end the chat.")
+        print("CryptoChat: Hey there! I'm CryptoChat, your friendly cryptocurrency assistant. We can chat about crypto, or anything else you'd like. What's on your mind?")
         while True:
             user_input = input("You: ")
             if user_input.lower() == 'exit':
+                print("CryptoChat: It was great chatting with you! Take care and come back anytime.")
                 print("Ending chat session.")
                 break
             
             response = self.get_ai_response(user_input)
-            print(f"AI: {response}")
+            print(f"CryptoChat: {response}")
 
     def get_ai_response(self, user_input: str) -> str:
         coin_context = self.prepare_coin_context()
         reddit_context = self.prepare_reddit_context()
         
+        system_message = f"""You are a friendly and knowledgeable AI assistant named CryptoChat. 
+        You're capable of engaging in casual conversation as well as providing detailed cryptocurrency analysis.
+        You have access to the following information about Ethereum-based tokens:
+        {coin_context}
+        
+        And recent Reddit discussions:
+        {reddit_context}
+        
+        Maintain a natural conversational flow. If the user wants to chat casually, respond in a friendly manner.
+        If they ask about cryptocurrencies, provide informed responses based on the available data.
+        Be concise but informative, and don't be afraid to show a bit of personality!
+        """
+        
         messages = [
-            {"role": "system", "content": f"You are an AI assistant specialized in cryptocurrency analysis. Use the following context about Ethereum-based tokens we've scanned: {coin_context}\n\nRecent Reddit discussions: {reddit_context}"},
-            {"role": "user", "content": user_input}
+            {"role": "system", "content": system_message},
         ]
         
+        # Add the chat history
         messages.extend(self.chat_history)
         
+        # Add the new user input
+        messages.append({"role": "user", "content": user_input})
+        
         try:
-            response = client.chat.completions.create(
+            response = self.openai_client.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
                 max_tokens=2800,
@@ -638,30 +758,32 @@ class AltcoinTracker(cmd.Cmd):
             
             ai_response = response.choices[0].message.content.strip()
             
+            # Update chat history
             self.chat_history.append({"role": "user", "content": user_input})
             self.chat_history.append({"role": "assistant", "content": ai_response})
             
-            self.chat_history = self.chat_history[-10:]  # Keep only the last 5 exchanges
+            # Keep only the last 10 messages (5 exchanges)
+            self.chat_history = self.chat_history[-10:]
             
             return ai_response
         except Exception as e:
             return f"An error occurred: {str(e)}"
 
     def prepare_coin_context(self) -> str:
-        context = "Here's a summary of the top 5 Ethereum-based tokens we've scanned:\n"
+        context = "Top 5 Ethereum-based tokens:\n"
         for token in self.ethereum_tokens[:5]:
             price = token['quote']['USD']['price']
             market_cap = token['quote']['USD']['market_cap']
             price_change_24h = token['quote']['USD']['percent_change_24h']
-            context += f"{token['symbol']}: Price ${price:.2f}, Market Cap ${market_cap:,.0f}, 24h Change {price_change_24h:.2f}%\n"
+            context += f"- {token['symbol']} ({token['name']}): Price ${price:.2f}, Market Cap ${market_cap:,.0f}, 24h Change {price_change_24h:.2f}%\n"
         return context
 
     def prepare_reddit_context(self) -> str:
         if self.reddit_analysis_results:
             context = "Recent Reddit Analysis:\n"
             for currency, count in self.reddit_analysis_results['currency_mentions'].most_common(5):
-                context += f"{currency}: {count} mentions\n"
-            context += f"Overall sentiment: {self.reddit_analysis_results['overall_sentiment']:.2f}\n"
+                context += f"- {currency}: {count} mentions\n"
+            context += f"Overall sentiment: {self.reddit_analysis_results['overall_sentiment']:.2f} (-1 to 1 scale)\n"
         else:
             context = "No recent Reddit analysis available.\n"
         return context
@@ -671,21 +793,30 @@ class AltcoinTracker(cmd.Cmd):
         print("Thank you for using the AltcoinTracker. Goodbye!")
         return True
 
-    def do_help(self, arg):
-        """List available commands with "help" or detailed help with "help cmd"."""
-        if not arg:
-            print(f"\n{Fore.CYAN}Available Commands:{Style.RESET_ALL}")
-            commands = {
-                "u": "Update listings", "l": "List tokens", "d": "Detailed analysis",
-                "b": "Browse Reddit", "a": "Analyze Reddit", "al": "Check alerts",
-                "t": "Market trends", "n": "Crypto news", "c": "AI chat",
-                "p": "Profit potential", "tour": "Interactive tour", "exit": "Exit program"
-            }
-            for cmd, desc in commands.items():
-                print(f"{Fore.GREEN}{cmd:<4}{Style.RESET_ALL} - {desc}")
-            print(f"\n{Fore.YELLOW}Type 'help <command>' for more information on a specific command.{Style.RESET_ALL}")
-        else:
-            cmd.Cmd.do_help(self, arg)
+    def do_h(self, arg):
+        """Display detailed help information"""
+        print(f"\n{Fore.CYAN}Detailed Command Information:{Fore.RESET}")
+        commands = {
+            "u": "Update CoinMarketCap listings and process data",
+            "a": "Analyze Reddit posts and comments for cryptocurrency mentions and sentiment",  # Changed from "ra" to "a"
+            "d <symbol>": "Perform detailed analysis on a specific token",
+            "l": "List all current Ethereum-based tokens",
+            "s": "Show the current status of the tool",
+            "p <number>": "Display top <number> tokens with highest profit potential",
+            "c": "Start a chat session with the AI about scanned coins",
+            "al": "Check for any triggered price alerts",
+            "t": "Display current market trends",
+            "n": "Fetch and display recent crypto news",
+            "h": "Display this detailed help information",
+            "q": "Quit the program"
+        }
+        for cmd, desc in commands.items():
+            print(f"{Fore.GREEN}{cmd:<15}{Fore.RESET} - {desc}")
+        print(f"\n{Fore.YELLOW}Recommended workflow:{Fore.RESET}")
+        print("1. Use 'u' to update data")
+        print("2. Use 'a' to analyze Reddit")  # Changed from "ra" to "a"
+        print("3. Use 'd <symbol>' to analyze specific tokens")
+        print("4. Explore other commands as needed")
 
 def main():
     init(autoreset=True)  # Initialize colorama

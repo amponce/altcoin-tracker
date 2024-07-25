@@ -5,7 +5,7 @@ WELCOME_ART = r"""
 \__|_|_|_\__| \__,_|_|\__\__\___/_|_||_|  \__|_| \__,_\__|_\_\___|_|
                                                                                                
             (\__/)    Welcome to the CMC Altcoin Tracker!
-           (='.'=)    Powered by Reddit and AI and some other magic
+           (='.'=)    This tool will help you track the price of your favorite altcoins using reddit.
            (")_(")    
                   
 """

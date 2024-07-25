@@ -1,8 +1,9 @@
 import logging
+from typing import List, Dict
 from config import OPPORTUNITY_CRITERIA
-from services.sentiment_analysis import analyze_sentiment_openai, analyze_reddit_sentiment
+from services.sentiment_analysis import get_openai_sentiment, analyze_reddit_sentiment
 
-def analyze_trends(current_data: list, previous_data: list) -> list:
+def analyze_trends(current_data: List[Dict], previous_data: List[Dict]) -> List[Dict]:
     logging.debug("Analyzing trends")
     opportunities = []
     
@@ -23,8 +24,9 @@ def analyze_trends(current_data: list, previous_data: list) -> list:
         circulating_supply = current["circulating_supply"]
         
         description = current.get("description", "")
-        sentiment_score = analyze_sentiment_openai(symbol, description)
-        reddit_sentiment = analyze_reddit_sentiment(symbol)
+        sentiment_score = get_openai_sentiment(symbol, description)
+        reddit_comments = current.get("reddit_comments", [])  # Assume this is added somewhere
+        reddit_sentiment = analyze_reddit_sentiment(symbol, reddit_comments)
         
         if (price_change > OPPORTUNITY_CRITERIA['price_change_threshold'] and 
             volume_change > OPPORTUNITY_CRITERIA['volume_change_threshold'] and 
