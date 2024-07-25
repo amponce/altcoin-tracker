@@ -5,3 +5,5 @@ python-dotenv
 ratelimit
 praw
 textblob
+colorama
+ascii_art
