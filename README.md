@@ -73,31 +73,30 @@ You can adjust the tracker's settings in the `config.py` file. This includes:
 Run the tracker with the following command:
 
 ```
-python altcoin_tracker.py
+python main.py
 ```
 
-### Commands
+### Available Commands
 
-Once the tracker is running, you can interact with it using the following commands:
+- `u`: Update CoinMarketCap listings and process data
+- `a`: Analyze Reddit posts and comments for cryptocurrency mentions and sentiment
+- `d <symbol>`: Perform detailed analysis on a specific token
+- `l`: List all current Ethereum-based tokens
+- `s`: Show the current status of the tool
+- `p <number>`: Display top <number> tokens with highest profit potential
+- `c`: Start a chat session with the AI about scanned coins
+- `al`: Check for any triggered price alerts
+- `t`: Display current market trends
+- `n`: Fetch and display recent crypto news
+- `h`: Display detailed help information
+- `q`: Quit the program
 
-- `update`: Update the current listings and process CoinMarketCap data
-- `list`: List all current Ethereum-based tokens
-- `analyze <symbol>`: Perform detailed analysis on a specific token
-- `reddit`: Browse Reddit posts and comments
-- `reddit_analyze`: Analyze Reddit posts for cryptocurrency mentions and sentiment
-- `alerts`: Check for triggered price alerts
-- `trends`: Display current market trends
-- `news`: Fetch recent cryptocurrency news
-- `chat`: Start a chat session with the AI about scanned coins
-- `top_potential <number>`: Identify and display tokens with the highest profit potential
-- `exit`: Exit the program
+## Example Workflow
 
-### Example Interactions
-
-- "Analyze the top 10 tokens for profit potential"
-- "Get the latest price alerts for significant changes"
-- "Browse recent Reddit discussions about cryptocurrencies"
-- "Fetch and display the latest cryptocurrency news"
+1. Use `u` to update data
+2. Use `a` to analyze Reddit
+3. Use `d <symbol>` to analyze specific tokens
+4. Explore other commands as needed
 
 ## Output
 
