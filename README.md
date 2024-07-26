@@ -2,7 +2,9 @@
 
 This project is an automated tool that monitors CoinMarketCap for potential buying opportunities in the altcoin market. It analyzes price changes, volume changes, and uses AI-powered sentiment analysis to identify promising altcoins.
 
-[![Watch the video](https://github.com/user-attachments/assets/6eb23e28-194f-4497-8835-783adf48a200)](https://www.youtube.com/watch?v=1b58_QAg7Zo)
+<p>
+<a href="https://www.youtube.com/watch?v=1b58_QAg7Zo" target="_new"><img width="1228" alt="Screenshot 2024-07-26 at 12 17 09 PM" src="https://github.com/user-attachments/assets/f8cd04da-6590-4724-b59d-4c93e5648593"></a>
+</p>
 
 ## Features
 
