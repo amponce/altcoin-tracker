@@ -76,18 +76,24 @@ class AltcoinTracker(cmd.Cmd):
 
     def display_help_menu(self):
         help_items = [
-            ("u", "Update CMC Data"),
-            ("a", "Analyze Reddit"),
-            ("d <symbol>", "Detailed Analysis"),
-            ("l", "List Tokens <20>"),
-            ("s", "Status"),
-            ("p", "Profit Potential"),
-            ("t", "Trends"),
-            ("h", "Full Help"),
-            ("q", "Quit")
+            ("u", "Update CMC Data", "Fetch the latest data from CoinMarketCap"),
+            ("a", "Analyze Reddit", "Analyze Reddit posts for sentiment and mentions"),
+            ("d <symbol>", "Detailed Analysis", "Perform detailed analysis on a specific token"),
+            ("l", "List Tokens <20>", "List the top 20 Ethereum-based tokens"),
+            ("s", "Status", "Show the current status of the tool"),
+            ("p", "Profit Potential", "Identify tokens with high profit potential"),
+            ("t", "Trends", "Display current market trends"),
+            ("n", "News", "Fetch and display recent crypto news"),
+            ("al", "Price Alerts", "Check for triggered price alerts"),
+            ("c", "Chat", "Start a chat session with the AI"),
+            ("q", "Quit", "Exit the program"),
+            ("h", "Full Help", "Display detailed help information"),
         ]
-        help_text = " | ".join([f"{Fore.GREEN}{cmd}{Fore.RESET}:{desc}" for cmd, desc in help_items])
-        print(f"\n{help_text}\n")
+
+        print(f"\n{Fore.CYAN}Available Commands:{Style.RESET_ALL}")
+        for cmd, desc, detail in help_items:
+            print(f"{Fore.GREEN}{cmd:<10}{Fore.RESET} - {desc:<20} {Fore.YELLOW}{detail}{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}Type 'h' for more detailed command descriptions.{Style.RESET_ALL}\n")
 
 
 
@@ -128,10 +134,10 @@ class AltcoinTracker(cmd.Cmd):
             if not self.current_data:
                 print("Error: No data received from CoinMarketCap API.")
                 return
-            
+
             print(f"Fetched {len(self.current_data)} tokens.")
             for i in range(100):
-                progress_bar(i+1, 100, prefix='Processing:', suffix='Complete', length=50)
+                progress_bar(i + 1, 100, prefix='Processing:', suffix='Complete', length=50)
                 if i == 24:
                     self.process_cmc_data()
                 elif i == 49:
@@ -144,12 +150,6 @@ class AltcoinTracker(cmd.Cmd):
 
             # Verify cmc_data contents
             logging.debug(f"CMC data after update: {list(self.cmc_data.keys())[:10]}")  # Log the first 10 token symbols
-
-            # Check for specific tokens
-            tokens_to_check = ['XAUt', 'USDe', 'BabyDoge', '0x0', 'Gomining']
-            missing_tokens = self.check_token_presence(tokens_to_check)
-            if missing_tokens:
-                logging.error(f"Missing tokens in cmc_data: {missing_tokens}")
 
         except Exception as e:
             print(f"An error occurred while updating: {str(e)}")
@@ -194,22 +194,38 @@ class AltcoinTracker(cmd.Cmd):
             if name != symbol:
                 self.cmc_data[name] = token
             logging.debug(f"Processed token: {symbol} ({name})")
-
         logging.debug(f"Processed CMC data. Total tokens: {len(self.cmc_data)}")
         logging.debug(f"Sample processed tokens: {list(self.cmc_data.keys())[:10]}")  # Log first 10 tokens for inspection
 
     def update_price_alerts(self):
         """Update the price alerts based on the latest data"""
-        self.price_alerts = []
+        self.price_alerts = []  # Clear existing alerts
+        potential_tokens = []
+
+        # Calculate potential score for each token
         for token in self.ethereum_tokens:
-            current_price = token['quote']['USD']['price']
-            alert_threshold = 0.1  # 10% movement
-            self.price_alerts.append({
-                'symbol': token['symbol'],
-                'current_price': current_price,
-                'upper_threshold': current_price * (1 + alert_threshold),
-                'lower_threshold': current_price * (1 - alert_threshold)
-            })
+            score = self.calculate_potential_score(token)
+            potential_tokens.append((token, score))
+
+        # Sort tokens by potential score and select the top N (e.g., top 10)
+        potential_tokens.sort(key=lambda x: x[1], reverse=True)
+        top_tokens = potential_tokens[:10]
+
+        # Set alerts only for the top potential tokens
+        for token, score in top_tokens:
+            symbol = token['symbol'].upper()
+            if symbol in self.cmc_data:
+                current_price = token['quote']['USD']['price']
+                alert_threshold = 0.1  # 10% movement
+                self.price_alerts.append({
+                    'symbol': symbol,
+                    'current_price': current_price,
+                    'upper_threshold': current_price * (1 + alert_threshold),
+                    'lower_threshold': current_price * (1 - alert_threshold)
+                })
+            else:
+                logging.warning(f"Token {symbol} not found in cmc_data.")
+        logging.debug(f"Updated price alerts for top potential tokens: {self.price_alerts}")
 
     def update_trend_analysis(self):
         """Update the trend analysis based on the latest data"""
@@ -619,6 +635,7 @@ class AltcoinTracker(cmd.Cmd):
         """Check for any triggered price alerts"""
         try:
             triggered_alerts = []
+            logging.debug(f"Checking alerts: {self.price_alerts}")
             for alert in self.price_alerts:
                 symbol = alert['symbol']
                 token_data = self.cmc_data.get(symbol)
